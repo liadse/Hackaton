@@ -7,28 +7,29 @@ import threading
 import struct
 import keyboard as keyboard
 from threading import *
-# import msvcrt
 import sys, tty, termios
 from getch import getch
 from select import select
 from scapy.arch import get_if_addr
 
 
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
+class color:
+    # lightblue color we print with
     OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
+
+Port = 2044
+PortUDP = 13117
+Buffer2048 = 2048
+Buffer1024 = 1024
+NumberOfListen = 20
 
 class Client():
+    """
+    This class is our client class, it includes udp and tcp connection
+    """
 
-    # def __init__(self, ip, port, teamName):
+    # initialize parameters
     def __init__(self):
         self.teamName = "Cyber-Funday"
         self.tcpClientSocket = socket(AF_INET, SOCK_STREAM)
@@ -37,21 +38,23 @@ class Client():
         self.locker = threading.Lock()
         self.connection_establish()
 
+    # this function opens a tread in order to catch a broadcast messege and respones it
     def connection_establish(self):
-
         clientAnswerBroadcastT = threading.Thread(target=self.clientAnswerBroadcast)
         clientAnswerBroadcastT.start()
         clientAnswerBroadcastT.join()
 
+    # this function creates a tcp connection and makes game preprarations
     def clientAnswerBroadcast(self):
         self.udpClientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
         self.udpClientSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
         print("Client started, listening for offer requests...")
-        self.udpClientSocket.bind(('', 14254))
+        self.udpClientSocket.bind(('', PortUDP))
         while True:
-            modifiedMessage, serverAddress = self.udpClientSocket.recvfrom(2048)
+            modifiedMessage, serverAddress = self.udpClientSocket.recvfrom(Buffer2048)
             print('Received offer from %s, attempting to connect...' % str(serverAddress))
             try:
+                # devide the broadcast messege into 3 vars
                 magicCookie, message_type, portTcp = struct.unpack('Ibh', modifiedMessage)
             except:
                 print(modifiedMessage)
@@ -64,7 +67,7 @@ class Client():
         while True:
             try:
                 self.tcpClientSocket.connect((serverAddress[0], portTcp))
-                print(f"{bcolors.OKCYAN}TCP connect client to " + str(serverAddress[0]) + "  " + str(portTcp))
+                print(f"{color.OKCYAN}TCP connect client to " + str(serverAddress[0]) + "  " + str(portTcp))
 
                 self.tcpClientSocket.send(b"Cyber-Funday\n")
                 break
@@ -73,19 +76,20 @@ class Client():
         self.udpClientSocket.close()
         self.play_the_game()
 
+    # this function plays the keyboard game for the client
     def play_the_game(self):
         try:
             catchCharsTread = Thread(target=self.recordChars)
             # welcome meesage
 
-            print(self.tcpClientSocket.recv(2048).decode())
+            print(self.tcpClientSocket.recv(Buffer2048).decode())
             self.TimeToPlaybool = True
             catchCharsTread.start()
 
             self.TimeToPlaybool = False
             catchCharsTread.join()
             # bye messege
-            print(self.tcpClientSocket.recv(2048).decode())
+            print(self.tcpClientSocket.recv(Buffer2048).decode())
             print("Server disconnected, listening for offer requests...")
             self.tcpClientSocket.close()
             return
@@ -93,23 +97,23 @@ class Client():
             self.tcpClientSocket.close()
             return
 
+    # pycharm windows version catch keyboard
     def sendCharsToServer(self, handle):
         try:
             self.tcpClientSocket.send(handle.name.encode())
         except:
             return
 
+    # this function records the chars and send them to the server
     def recordChars(self):
         numofchars = 0
+        # the windows version
         # keyboard.on_press(self.sendCharsToServer)
         while not self.TimeToPlaybool:
             continue
         self.sendCharsToServer2(self.tcpClientSocket)
 
-    def isData(self):
-        import select
-        return select.select([sys.stdin], [], [], 0) == ([sys.stdin], [], [])
-
+    # linux version catch keyboard
     def sendCharsToServer2(self, client_socket):
         os.system("stty raw -echo")
         previousSet = termios.tcgetattr(sys.stdin)
@@ -118,12 +122,8 @@ class Client():
 
             startTime = time.time()
             while True:
-                # data,a,b = select([sys.stdin],[],[],0)
-                # if data:
                 input1 = sys.stdin.read(1)
-                # print(input1.encode('utf-8'))
                 sys.stdout.write(input1)
-                # client_socket.send(input1.encode('utf-8'))
                 client_socket.send(str.encode(input1))
                 if 10 < time.time() - startTime:
                     break
@@ -134,8 +134,8 @@ class Client():
         finally:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, previousSet)
             print("Waiting")
-            # client_socket.close()
 
 
+# Start the client
 client = Client()
 

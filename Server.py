@@ -7,29 +7,30 @@ import random
 from scapy.arch import get_if_addr
 
 
+Port = 2044
+PortUDP = 13117
+Buffer2048 = 2048
+Buffer1024 = 1024
+NumberOfListen = 20
+
 
 class Server(object):
     """
-    docstring
+    This class is our Server class, it includes udp and tcp connection 
+    and all the game organization
     """
 
+    #initialize parameters  
     def __init__(self):
         # udp socket
         self.udpServerSocket = socket(AF_INET, SOCK_DGRAM)
         self.tcpServerSocket = socket(AF_INET, SOCK_STREAM)
         self.tcpServerSocket.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-
         # dict of connections
         self.clientsInGame = {}
-
-        # when clients are onnected and the game starts  - will change to true
-
         self.firstGroup = {}
         self.secondGroup = {}
-
         self.locker = threading.Lock()
-        #  ___________________________________________
-
         self.scoreFirstGroup = 0
         self.scoreSecondGroup = 0
         self.locker = threading.Lock()
@@ -37,60 +38,51 @@ class Server(object):
         self.gameMode = False
         self.InitGame()
 
+
+    #this function sends broadcast message to all cliens that listen to the port
     def sendBroadcast(self):
         waitingTime = time.time() + 10
-
-        message = struct.pack('Ibh', 0xfeedbeef, 0x2, 2044)
+        message = struct.pack('Ibh', 0xfeedbeef, 0x2, Port)
         # 10 sec of a brodacast send
         while time.time() < waitingTime:
-            #self.udpServerSocket.sendto(message, ('<broadcast>', 14254))
-            self.udpServerSocket.sendto(message, (get_if_addr('eth1'), 14254))
-            # server.sendto(message, ("255.255.255.255", 13117))
+            self.udpServerSocket.sendto(message, (get_if_addr('eth1'), PortUDP))
             time.sleep(1)
 
-    #  ___________________________________________
-
+    #this function initialize the game
     def InitGame(self):
-
-        self.udpServerSocket.bind(('', 2044))
+        self.udpServerSocket.bind(('', Port))
         self.udpServerSocket.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
-        self.tcpServerSocket.bind(('', 2044))
-        #print(f'Server started, listening on IP address {gethostbyname(gethostname())}')
+        self.tcpServerSocket.bind(('', Port))
         print(f'Server started, listening on IP address {get_if_addr("eth1")}')
-        self.tcpServerSocket.listen(20)
+        self.tcpServerSocket.listen(NumberOfListen)
         self.tcpServerSocket.settimeout(0.2)
-
         broadcastT = Thread(target=self.sendBroadcast)
         broadcastT.start()
 
-        # while broadcastT.is_alive() and not self.gameMode:
+        #we wait until the 10 sec of brodacast message finish
         while broadcastT.is_alive():
             try:
                 with self.locker:
-                    #print(self.tcpServerSocket.getsockname())
                     client_socket, client_info = self.tcpServerSocket.accept()
                     print("TCP connect server")
                     print(f"Got new connection from: {client_info}")
-                    groupName = client_socket.recv(1024).decode()
-
+                    groupName = client_socket.recv(Buffer1024).decode()
                     self.clientsInGame[client_socket] = [groupName, client_info, 0, 0]
                     self.gameMode = True
 
             except:
                 continue
 
-        #todo check if remove
         self.udpServerSocket.close()
         self.tcpServerSocket.close()
-
         self.gameMode = True
         self.startGame()
 
+    #This function start the game and calculate the scores and set a winner
     def startGame(self):
-        if len(self.clientsInGame) <= -1:  # TODO check how many is the lower bound to start a game.
+        if len(self.clientsInGame) <= 0:  
             print("the number of clients is:" + str(self.clientsInGame))
             print("You must To have at least 2 groups to start a game")
-            # self.client_sockets_close()
             return
 
         list_clients = list(self.clientsInGame.keys())
@@ -156,17 +148,18 @@ class Server(object):
 
         print("Game over, sending out offer requests...")
 
+    #this function open thread for the game
     def game_thread(self, clientSocket):
         start_game_time = time.time()
         self.start_Game = True
         countChars = 0
         while time.time() - start_game_time < 10:
-            data = clientSocket.recv(2048).decode()
+            data = clientSocket.recv(Buffer2048).decode()
             countChars += 1
         if self.clientsInGame[clientSocket][2] == 1:
             self.scoreFirstGroup += countChars
         else:
             self.scoreSecondGroup += countChars
 
-
+#start the server
 server = Server()
